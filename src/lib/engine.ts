@@ -152,15 +152,20 @@ export class RecitationEngine {
         }
       }
     }
-    const fresh = words.slice(bestK);
-    this.runningWords.push(...fresh);
-    this.lastHeardWords = words;
-    this.alignFrom(this.freshStartIdx(fresh.length), fresh);
+    this.appendWords(words.slice(bestK));
   }
 
-  private freshStartIdx(freshCount: number): number {
-    // Only align the words that are new-ish: last few running words.
-    return Math.max(0, this.runningWords.length - freshCount - 2);
+  /** Append already-deduplicated words (browser ASR / demo mode) and align. */
+  appendWords(words: string[]) {
+    if (words.length === 0) return;
+    this.runningWords.push(...words);
+    this.lastHeardWords = words;
+    this.alignFrom(Math.max(0, this.runningWords.length - words.length - 2), words);
+  }
+
+  /** Next expected word (normalized) — used by demo mode. */
+  get nextExpected(): string | null {
+    return this.flat[this.pos]?.norm ?? null;
   }
 
   /** Sliding-window alignment of running transcript against expected words. */

@@ -15,10 +15,12 @@ import { SurahPicker, type Selection } from "@/components/recitation/SurahPicker
 import { Reader } from "@/components/recitation/Reader";
 import { MistakePanel, MistakeBadge } from "@/components/recitation/MistakePanel";
 import { SessionSummary } from "@/components/recitation/SessionSummary";
+import { SourceControls, type AsrSource } from "@/components/recitation/SourceControls";
 import { RecitationEngine, type Mistake, type WordStatus } from "@/lib/engine";
 import { fetchChapter, sliceRange } from "@/lib/quran";
 import { useMicRecorder } from "@/hooks/use-mic-recorder";
 import { useAsrSocket } from "@/hooks/use-asr-socket";
+import { useBrowserSpeech } from "@/hooks/use-browser-speech";
 import {
   Mic,
   MicOff,
@@ -51,6 +53,9 @@ export default function Recite({ onOpenSummary }: Props = {}) {
   const [showTranscript, setShowTranscript] = useState(true);
   const [running, setRunning] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [source, setSource] = useState<AsrSource>("auto");
+  const [demoOn, setDemoOn] = useState(false);
+  const runningRef = useRef(false);
 
   // Load chapter data.
   useEffect(() => {
@@ -89,17 +94,29 @@ export default function Recite({ onOpenSummary }: Props = {}) {
   const handleChunk = useCallback(
     (seq: number, text: string) => {
       const engine = engineRef.current;
-      if (!engine || !running) return;
+      if (!engine || !runningRef.current) return;
       const words = text.split(/\s+/).filter(Boolean);
       engine.mergeChunk(words);
       pushUpdate();
     },
-    [running, pushUpdate],
+    [pushUpdate],
+  );
+
+  const handleBrowserWords = useCallback(
+    (words: string[]) => {
+      const engine = engineRef.current;
+      if (!engine || !runningRef.current) return;
+      engine.appendWords(words);
+      pushUpdate();
+    },
+    [pushUpdate],
   );
 
   const { status: wsStatus, connect, disconnect, sendAudio } = useAsrSocket({
     onChunk: (c) => handleChunk(c.seq, c.text),
   });
+
+  const browserSpeech = useBrowserSpeech(handleBrowserWords);
 
   const onChunkRef = useRef<(s: Float32Array, seq: number) => void>(sendAudio);
   onChunkRef.current = sendAudio;
@@ -113,14 +130,24 @@ export default function Recite({ onOpenSummary }: Props = {}) {
     engineRef.current?.reset();
     setTick((t) => t + 1);
     setSummaryOpen(false);
+    runningRef.current = true;
+    if (source === "demo") {
+      setDemoOn(true);
+      setRunning(true);
+      return;
+    }
     connect();
     await recorder.start();
+    browserSpeech.start();
     setRunning(true);
   };
 
   const stopSession = () => {
+    runningRef.current = false;
     setRunning(false);
+    setDemoOn(false);
     recorder.stop();
+    browserSpeech.stop();
     disconnect();
     setSummaryOpen(true);
   };
@@ -135,6 +162,20 @@ export default function Recite({ onOpenSummary }: Props = {}) {
   const ayahStates: WordStatus[][] = engine ? engine.ayahStates.map((a) => a.words) : [];
   const progress = engine && engine.totalWords > 0 ? (engine.position / engine.totalWords) * 100 : 0;
   const reachedEnd = engine ? engine.position >= engine.totalWords : false;
+
+  // Demo mode: reveal ~2 words per second by simulating perfect recitation.
+  useEffect(() => {
+    if (!demoOn || !engineRef.current) return;
+    const id = setInterval(() => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      const next = engine.nextExpected;
+      if (!next) return;
+      engine.appendWords([next]);
+      setTick((t) => t + 1);
+    }, 500);
+    return () => clearInterval(id);
+  }, [demoOn]);
 
   useEffect(() => {
     if (running && reachedEnd && engine && engine.totalWords > 0) {
@@ -192,6 +233,14 @@ export default function Recite({ onOpenSummary }: Props = {}) {
                 <CardTitle className="text-base">Mode</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
+                <SourceControls
+                  value={source}
+                  onChange={setSource}
+                  wsStatus={wsStatus}
+                  browserStatus={browserSpeech.status}
+                  disabled={running}
+                />
+                <Separator />
                 <div className="flex items-center justify-between">
                   <label htmlFor="mode-mem" className="flex items-center gap-2 text-sm font-medium">
                     {mode === "memorize" ? <EyeOff className="size-4" /> : <BookOpen className="size-4" />}
