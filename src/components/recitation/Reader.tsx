@@ -10,9 +10,21 @@ interface Props {
   peek?: boolean;
 }
 
+function wordClass(
+  st: WordStatus,
+  opts: { hidden: boolean; isCursor: boolean },
+): string {
+  const base = "mx-0.5 inline-block rounded-md px-1 transition-colors duration-300";
+  if (opts.hidden) return `${base} cursor-help select-none bg-secondary text-transparent`;
+  if (st === "recited") return `${base} bg-emerald-500/15 text-emerald-900 dark:text-emerald-200`;
+  if (st === "wrong") return `${base} mistake-pulse text-red-800 dark:text-red-300`;
+  if (opts.isCursor) return `${base} bg-primary/15 text-foreground ring-1 ring-primary/40`;
+  return `${base} text-foreground/90`;
+}
+
 /**
- * Word-level reader. Normalized LTR logic here: statuses come flat-indexed,
- * the visual order is RTL via the container's dir="rtl".
+ * Word-level reader. Statuses come flat-indexed; the visual order is RTL via
+ * the container's dir="rtl".
  */
 export function Reader({ verses, ayahStates, cursor, memorize, peek }: Props) {
   let flat = 0;
@@ -20,37 +32,25 @@ export function Reader({ verses, ayahStates, cursor, memorize, peek }: Props) {
     <div dir="rtl" className="font-arabic space-y-5 text-2xl leading-[2.3] sm:text-3xl">
       {verses.map((v, vi) => {
         const states = ayahStates[vi] ?? [];
+        const tokens = v.text.split(/\s+/).filter(Boolean);
         return (
           <p key={v.verse} className="rounded-xl px-2 py-1">
-            {v.text.split(/\s+/).filter(Boolean).map((token, wi) => {
+            {tokens.map((token, wi) => {
               const idx = flat++;
               const st: WordStatus = states[wi] ?? "pending";
-              const isCursor = cursor === idx;
-              const hidden = memorize && !peek && st === "pending";
+              const cls = wordClass(st, {
+                hidden: Boolean(memorize) && !peek && st === "pending",
+                isCursor: cursor === idx,
+              });
               return (
-                <span
-                  key={wi}
-                  className={
-                    "mx-0.5 inline-block rounded-md px-1 transition-colors duration-300 " +
-                    (hidden
-                      ? "cursor-help select-none bg-secondary text-transparent"
-                      : st === "recited"
-                        ? "bg-emerald-500/15 text-emerald-900 dark:text-emerald-200"
-                        : st === "wrong"
-                          ? "mistake-pulse rounded-md text-red-800 dark:text-red-300"
-                          : isCursor
-                            ? "bg-primary/15 text-foreground ring-1 ring-primary/40"
-                            : "text-foreground/90")
-                  }
-                title={memorize ? "Révélé à la récitation" : undefined}
-              >
-                {token}
-              </span>
+                <span key={wi} className={cls} title={memorize ? "Révélé à la récitation" : undefined}>
+                  {token}
+                </span>
               );
             })}
             <span
               className={`mx-1 inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs ${
-                ayahStates[vi]?.some((s) => s !== "pending")
+                states.some((s) => s !== "pending")
                   ? "border-emerald-600/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
                   : "border-border text-muted-foreground"
               }`}
