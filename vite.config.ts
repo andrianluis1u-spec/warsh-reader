@@ -94,6 +94,17 @@ export default defineConfig({
     // Bind to all interfaces so the browser runtime's server-ready event fires.
     host: true,
     port: 5173,
+    // Allow access through tunnel hostnames (e.g. *.trycloudflare.com).
+    allowedHosts: true,
+    // Proxy the ASR WebSocket to the FastAPI backend on the same machine,
+    // so the browser only ever talks to the page's own origin (same-origin
+    // wss:// behind HTTPS tunnels, no mixed-content issues).
+    proxy: {
+      "/asr": {
+        target: "http://localhost:8000",
+        ws: true,
+      },
+    },
     // Keep HMR on, but disable full-screen error overlay
     hmr: {
       overlay: false,

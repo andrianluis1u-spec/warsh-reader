@@ -2,6 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type WsStatus = "idle" | "connecting" | "open" | "closed" | "error";
 
+/**
+ * Same-origin ASR WebSocket URL. The Vite dev server proxies /asr to the
+ * FastAPI backend, so the browser always talks to its own origin — ws:// on
+ * http pages, wss:// on https pages (tunnels). No hardcoded localhost.
+ */
+export function sameOriginAsrUrl(): string {
+  if (typeof window === "undefined") return "/asr";
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}/asr`;
+}
+
 export type TranscriptChunk = {
   seq: number;
   text: string;
@@ -16,7 +27,7 @@ type Options = {
 /**
  * WebSocket client for the ASR backend. `sendAudio` ships 16 kHz Float32 PCM;
  * the backend answers with `{ type: "chunk", seq, text }` messages.
- * URL comes from VITE_ASR_WS (e.g. ws://localhost:8000/asr).
+ * URL: same-origin /asr (proxied by the dev server), overridable with VITE_ASR_WS.
  */
 export function useAsrSocket({ url, onChunk, onStatus }: Options) {
   const [status, setStatus] = useState<WsStatus>("idle");
@@ -28,7 +39,7 @@ export function useAsrSocket({ url, onChunk, onStatus }: Options) {
   const effectiveUrl =
     url ??
     (import.meta.env.VITE_ASR_WS as string | undefined) ??
-    "ws://localhost:8000/asr";
+    sameOriginAsrUrl();
 
   useEffect(() => {
     onStatus?.(status);
