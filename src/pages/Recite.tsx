@@ -17,11 +17,14 @@ import { MistakePanel, MistakeBadge } from "@/components/recitation/MistakePanel
 import { SessionSummary } from "@/components/recitation/SessionSummary";
 import { SourceControls, type AsrSource } from "@/components/recitation/SourceControls";
 import { RecitationEngine, type Mistake, type WordStatus } from "@/lib/engine";
-import { fetchChapter, sliceRange } from "@/lib/quran";
+import { fetchChapter, sliceRange, surahList } from "@/lib/quran";
+import { saveSession } from "@/lib/history";
 import { useMicRecorder } from "@/hooks/use-mic-recorder";
 import { useAsrSocket } from "@/hooks/use-asr-socket";
 import { useBrowserSpeech } from "@/hooks/use-browser-speech";
+import { useNavigate } from "react-router";
 import {
+  History,
   Mic,
   MicOff,
   BookOpen,
@@ -40,6 +43,7 @@ interface Props {
 }
 
 export default function Recite({ onOpenSummary }: Props = {}) {
+  const navigate = useNavigate();
   const [selection, setSelection] = useState<Selection>({ surah: 1 });
   const [verses, setVerses] = useState<import("@/lib/quran").WarshChapter | null>(null);
   const [loading, setLoading] = useState(true);
@@ -149,6 +153,23 @@ export default function Recite({ onOpenSummary }: Props = {}) {
     recorder.stop();
     browserSpeech.stop();
     disconnect();
+    // Persist the session locally (localStorage) for the history page.
+    const engine = engineRef.current;
+    if (engine && engine.totalWords > 0 && (engine.position > 0 || engine.mistakeList.length > 0)) {
+      const first = activeVerses[0];
+      const last = activeVerses[activeVerses.length - 1];
+      saveSession({
+        surah: selection.surah,
+        surahName: surahList().find((s) => s.number === selection.surah)?.nameFr ?? `Sourate ${selection.surah}`,
+        fromAyah: first?.verse ?? 1,
+        toAyah: last?.verse ?? first?.verse ?? 1,
+        accuracy: engine.accuracy,
+        wordsRecited: engine.position,
+        totalWords: engine.totalWords,
+        mistakes: engine.mistakeList.length,
+        durationMs: engine.elapsedMs(),
+      });
+    }
     setSummaryOpen(true);
   };
 
@@ -204,6 +225,15 @@ export default function Recite({ onOpenSummary }: Props = {}) {
               ASR {wsStatus === "open" ? "connecté" : wsStatus === "connecting" ? "…" : "hors ligne"}
             </Badge>
             <MistakeBadge count={engine?.mistakeList.length ?? 0} />
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => navigate("/dashboard")}
+            >
+              <History className="size-3.5" />
+              Historique
+            </Button>
           </div>
         </header>
 

@@ -2,7 +2,6 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { useAuth } from "@/hooks/use-auth";
 import {
   ArrowLeft,
   Eye,
@@ -50,8 +49,7 @@ const STEPS = [
 ];
 
 export default function Landing() {
-  const { isAuthenticated } = useAuth();
-  const ctaHref = isAuthenticated ? "/recite" : "/auth?returnTo=%2Frecite";
+  const ctaHref = "/recite";
 
   return (
     <div className="min-h-screen bg-background">
@@ -69,7 +67,7 @@ export default function Landing() {
           </nav>
           <Button asChild className="cursor-pointer">
             <a href={ctaHref}>
-              {isAuthenticated ? "Réciter" : "Commencer"}
+              Réciter
               <ArrowLeft className="size-4" />
             </a>
           </Button>

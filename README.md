@@ -5,35 +5,51 @@ choisissez une sourate, récitez dans le micro, et l'application suit le texte
 en temps réel — mots surlignés à mesure, erreurs signalées (mot sauté / en
 trop / erroné), plus un **mode mémorisation** où le texte se révèle mot à mot.
 
+- **Aucune connexion requise** : pas de compte, pas de backend obligatoire.
+  L'historique des sessions (précision, erreurs, durée) est enregistré dans
+  le navigateur (localStorage).
 - Interface **en français**, texte coranique **RTL** (rasm Warsh authentique,
   6 214 ayat — numérotation de Nafiʿ, pas Hafs).
 - ASR : Whisper-small affiné sur la récitation Warsh
   ([`benhadjermed/tahkik-small-warsh`](https://huggingface.co/benhadjermed/tahkik-small-warsh),
-  Apache-2.0), servi par un backend FastAPI WebSocket.
+  Apache-2.0), servi par un backend FastAPI WebSocket **optionnel** —
+  sinon, repli automatique sur la reconnaissance vocale du navigateur
+  (Chrome/Edge/Safari), ou mode démo sans micro.
 - Le texte Warsh provient de [risan/quran-json](https://github.com/risan/quran-json)
-  (édition Qur'anpedia), téléchargé au build et embarqué en JSON statique.
+  (édition Qur'anpedia), embarqué en JSON statique dans `public/data/warsh`.
 
 ## Structure du dépôt
 
 ```
-/                  frontend React (Vite, PWA-ready) + données Warsh dans /public/data/warsh
-/backend           backend FastAPI (endpoint WebSocket /asr)
+/                  frontend React (Vite) + données Warsh dans /public/data/warsh
+/backend           backend FastAPI optionnel (endpoint WebSocket /asr)
 /scripts           fetch-warsh.py : télécharge le JSON Warsh
 /public/data/warsh quran.json (Coran entier) + chapters/1..114.json
 ```
 
-## Démarrage rapide
-
-### 1. Données Warsh
+## Démarrage rapide (frontend seul — suffisant pour tester)
 
 ```bash
-python3 scripts/fetch-warsh.py
+npm install
+npm run dev
 ```
 
-(Vérifie 6 214 ayat. Les fichiers sont déjà embarqués dans ce dépôt ; ce
-script permet de les rafraîchir depuis la source.)
+Aucune variable d'environnement n'est nécessaire. La seule variable
+**optionnelle** est `VITE_ASR_WS` (ex. `ws://localhost:8000/asr`) pour
+brancher le backend Whisper ; sans elle, l'app utilise la reconnaissance du
+navigateur ou le mode démo.
 
-### 2. Backend ASR
+Build de production : `npm run build`.
+
+## Reconnaissance vocale : trois sources
+
+| Source | Quand | Précision |
+|---|---|---|
+| **Auto** (défaut) | Backend détecté → Whisper ; sinon → micro navigateur | Maximale avec backend |
+| **Backend Whisper** | `python3 backend/` ci-dessous + `VITE_ASR_WS` | Maximale (modèle Warsh) |
+| **Démo** | Sans micro — les mots avancent seuls (~2/s) | Test de l'interface |
+
+## Backend ASR (optionnel — le vrai modèle Warsh)
 
 ```bash
 cd backend
@@ -42,59 +58,59 @@ pip install -r requirements.txt
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-La première connexion télécharge le modèle (~250 Mo) puis répond en flux.
-Voir `backend/README.md` pour les détails (protocole, variables d'env).
-
-### 3. Frontend
+La première connexion télécharge le modèle (~250 Mo). Puis :
 
 ```bash
-bun install        # ou npm install
-bun run dev        # ou npm run dev
+echo "VITE_ASR_WS=ws://localhost:8000/asr" > .env.local
+npm run dev
 ```
 
-Ouvrez l'app, connectez-vous, choisissez une sourate et lancez la récitation.
-Le frontend parle au backend via `VITE_ASR_WS` (défaut
-`ws://localhost:8000/asr`) — à définir avant `bun run dev` si besoin.
+Le badge « ASR connecté » (vert) en haut de la page `/recite` confirme la
+liaison. Voir `backend/README.md` pour le protocole et le GPU (CUDA).
 
-### GPU (optionnel)
-
-Sur machine CUDA : `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12==9.*` puis
+## Données Warsh
 
 ```bash
-ASR_DEVICE=cuda ASR_COMPUTE_TYPE=float16 uvicorn app:app --port 8000
+python3 scripts/fetch-warsh.py
 ```
 
-Sans GPU, le backend fonctionne en CPU (int8 via faster-whisper) : suffisant
-pour des chunks de 4 s avec une latence de l'ordre de la seconde.
+(Vérifie 6 214 ayat. Les fichiers sont déjà embarqués ; ce script permet de
+les rafraîchir depuis la source.)
+
+## Pages
+
+- `/` — présentation
+- `/recite` — session de récitation (sourate, plage d'ayat, suivi, erreurs,
+  mode mémorisation, résumé de session)
+- `/dashboard` — historique local des sessions (localStorage) : précision
+  moyenne, meilleure précision, temps total, suppression individuelle ou
+  complète
 
 ## Comment ça marche (pipeline)
 
 1. **Micro → chunks** : Web Audio API, mono 16 kHz, chunks de 4 s avec
-   1,5 s de chevauchement, envoyés en binaire sur WebSocket.
-2. **ASR** : chaque chunk est transcrit (Whisper n'est pas streaming).
-3. **Fusion** : les transcriptions de chunks se recouvrent ; le moteur garde
-   la partie médiane de chaque chunk et supprime les doublons de bord →
-   transcription stable.
+   1,5 s de chevauchement, envoyés en binaire sur WebSocket (backend) —
+   ou reconnaissance continue du navigateur en mode repli.
+2. **ASR** : transcription de chaque chunk (Whisper n'est pas streaming).
+3. **Fusion** : partie médiane de chaque chunk conservée, doublons de bord
+   supprimés → transcription stable.
 4. **Normalisation** : suppression du tashkeel et des marques coraniques,
    unification alef/hamza, yaa/alef maqsura, taa marbuta.
 5. **Alignement** : fenêtre glissante autour de la position courante +
    distance de Levenshtein au niveau mot → suivi de position, mots récités,
-   et détection d'erreurs : `sauté` (passé sans correspondance), `en trop`
-   (aucune correspondance proche), `erroné` (meilleure correspondance floue
-   sous le seuil). Les correspondances incertaines restent prudentes :
-   l'app n'émet **aucun** jugement de tajwid.
+   erreurs (`sauté`, `en trop`, `erroné`). Aucun jugement de tajwid.
 6. **Auto-avance** : la position attendue avance dès que les mots correspondent.
 
 ## Limites connues
 
-- La précision dépend du micro et de la latence CPU/GPU ; le mode démo
-  tolère l'absence de backend (bouton simulé) mais le suivi réel exige l'ASR.
+- La reconnaissance du navigateur (repli sans backend) est approximative sur
+  le texte coranique — le backend Whisper Warsh est bien plus précis.
 - La numérotation affichée est celle de Warsh ; certaines sourates ont un
   nombre d'ayat différent de Hafs (ex. al-Baqara : 285 en Warsh).
-- Ne juge ni le tajwid ni la prononciation : suivi de texte uniquement.
+- L'historique est local au navigateur : vider le stockage du site l'efface.
 
 ## Licences & crédits
 
 - Texte Warsh : Qur'anpedia via risan/quran-json — voir les termes sur le dépôt.
 - Modèle ASR : Apache-2.0, benhadjermed/tahkik-small-warsh.
-- police arabe : [Amiri](https://fonts.google.com/specimen/Amiri) (OFL).
+- Police arabe : [Amiri](https://fonts.google.com/specimen/Amiri) (OFL).
