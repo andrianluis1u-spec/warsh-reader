@@ -1,0 +1,19 @@
+{
+  "name": "Tarteel Warsh — Récitation guidée",
+  "short_name": "Tarteel Warsh",
+  "description": "Suivi de récitation en temps réel pour la riwaya Warsh : surlignage mot à mot, détection d'erreurs et mode mémorisation.",
+  "lang": "fr",
+  "dir": "rtl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fafaf5",
+  "theme_color": "#2f6b4f",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

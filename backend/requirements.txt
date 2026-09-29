@@ -1,0 +1,14 @@
+# FastAPI ASR backend — Tarteel Warsh
+# CPU-only installs work out of the box; see README for GPU (CUDA) notes.
+
+fastapi>=0.115
+uvicorn[standard]>=0.30
+websockets>=12.0
+numpy>=1.26
+
+# Option A (default): faster-whisper — fast on CPU (int8) and GPU (float16).
+faster-whisper>=1.0.0
+
+# Option B: transformers fallback (auto-used if faster-whisper can't load the model).
+transformers>=4.44
+torch>=2.2
